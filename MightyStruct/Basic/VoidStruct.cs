@@ -25,11 +25,9 @@ namespace MightyStruct.Basic
 {
     public class VoidStruct : IStruct
     {
-        private Context Context { get; }
-        
-        private long Length { get; }
+        public Context Context { get; }
 
-        public Stream Stream => Context.Stream;
+        private long Length { get; }
 
         public VoidStruct(Context context, long length)
         {
@@ -40,10 +38,13 @@ namespace MightyStruct.Basic
 
         public Task ParseAsync()
         {
+            Context.Stream.Seek(0, SeekOrigin.Begin);
+            (Context.Stream as SubStream).Unlock();
+
             Context.Stream.SetLength(Length);
             Context.Stream.Position = Length;
 
-            (Context.Stream as SubStream)?.Lock();
+            (Context.Stream as SubStream).Lock();
 
             return Task.CompletedTask;
         }
@@ -51,6 +52,11 @@ namespace MightyStruct.Basic
         public Task UpdateAsync()
         {
             return Task.CompletedTask;
+        }
+
+        public static implicit operator Stream(VoidStruct voidStruct)
+        {
+            return voidStruct.Context.Stream;
         }
     }
 }

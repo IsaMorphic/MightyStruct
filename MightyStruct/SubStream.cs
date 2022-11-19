@@ -57,8 +57,13 @@ namespace MightyStruct
         public void Lock()
         {
             if (_locked)
-                throw new InvalidOperationException("Sub-stream is already locked.");
+                throw new InvalidOperationException("Cannot redudantly lock a SubStream is locked.");
             _locked = true;
+        }
+
+        public void Unlock()
+        {
+            _locked = false;
         }
 
         public override bool CanRead => Parent.CanRead;
@@ -70,23 +75,21 @@ namespace MightyStruct
 
         public override int Read(byte[] buffer, int offset, int count)
         {
+            int bytesRead;
             Seek(0, SeekOrigin.Current);
-            int bytesRead = Parent.Read(buffer, offset, count);
             if (_locked)
             {
                 if (_position + count > Length)
-                {
-                    bytesRead = (int)(Length - _position);
-                    _position = Length;
-                }
+                    bytesRead = Parent.Read(buffer, offset, (int)(Length - _position));
                 else
-                {
-                    _position += count;
-                }
+                    bytesRead = Parent.Read(buffer, offset, count);
+
+                _position += bytesRead;
             }
             else
             {
-                SetLength(_position += count);
+                bytesRead = Parent.Read(buffer, offset, count);
+                SetLength(_position += bytesRead);
             }
             return bytesRead;
         }
@@ -94,22 +97,9 @@ namespace MightyStruct
         public override void Write(byte[] buffer, int offset, int count)
         {
             Seek(0, SeekOrigin.Current);
+
             Parent.Write(buffer, offset, count);
-            if (_locked)
-            {
-                if (_position + count > Length)
-                {
-                    throw new InvalidOperationException("Attempted to write past the stream's boundaries");
-                }
-                else
-                {
-                    _position += count;
-                }
-            }
-            else
-            {
-                SetLength(_position += count);
-            }
+            SetLength(_position += count);
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -131,8 +121,6 @@ namespace MightyStruct
 
         public override void SetLength(long value)
         {
-            if (_locked)
-                throw new InvalidOperationException("Sub-stream is locked and its length cannot be changed.");
             if (Offset + value > Parent.Length)
                 Parent.SetLength(Offset + value);
             _length = value;
@@ -140,7 +128,7 @@ namespace MightyStruct
 
         public override void Flush()
         {
-            return;
+            Parent.Flush();
         }
     }
 }

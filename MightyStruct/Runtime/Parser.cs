@@ -64,7 +64,7 @@ namespace MightyStruct.Runtime
         {
             var xml = XElement.Load(stream);
 
-            return ParseType(xml, Types);
+            return ParseType(xml, new Dictionary<string, IType>(Types));
         }
 
         public static UserType ParseType(XElement xmlType, Dictionary<string, IType> scopedTypes)
@@ -79,17 +79,23 @@ namespace MightyStruct.Runtime
             foreach (var subType in subTypes)
             {
                 var parsed = ParseType(subType, new Dictionary<string, IType>(scopedTypes));
+                type.SubTypes.Add(parsed.Name, parsed);
                 scopedTypes.Add(parsed.Name, parsed);
             }
 
             foreach (var attr in attributes)
             {
-                var attrName = attr.Attribute("name");
+                var nameAttr = attr.Attribute("name");
+
+                var debugAttr = attr.Attribute("debug");
 
                 var typeAttr = attr.Attribute("type");
                 var typeExpr = attr.Element("type");
 
+                var baseExpr = attr.Element("base");
+                var pointerExpr = attr.Element("pointer");
                 var offsetExpr = attr.Element("offset");
+
                 var sizeExpr = attr.Element("size");
 
                 var conditionExpr = attr.Element("if");
@@ -111,10 +117,21 @@ namespace MightyStruct.Runtime
                     typePotential = new TrivialPotential<IType>(new VoidType(new Expression<long>(sizeExpr.Value)));
                 }
 
-                if (offsetExpr != null)
+                if (debugAttr != null)
                 {
                     var baseType = typePotential;
-                    var offsetType = new OffsetType(baseType, new Expression<long>(offsetExpr.Value));
+                    var breakpointType = new BreakpointType(baseType);
+                    typePotential = new TrivialPotential<IType>(breakpointType);
+                }
+
+                if (pointerExpr != null)
+                {
+                    var baseType = typePotential;
+                    var offsetType = new OffsetType(baseType,
+                        new Expression<IPrimitiveStruct>(pointerExpr.Value),
+                        baseExpr == null ? new TrivialPotential<IStruct>(null) : new Expression<IStruct>(baseExpr.Value),
+                        offsetExpr == null ? new TrivialPotential<long>(0) : new Expression<long>(offsetExpr.Value)
+                        );
 
                     typePotential = new TrivialPotential<IType>(offsetType);
                 }
@@ -146,7 +163,7 @@ namespace MightyStruct.Runtime
                     }
                 }
 
-                type.Attributes.Add(attrName.Value, typePotential);
+                type.Attributes.Add(nameAttr.Value, typePotential);
             }
 
             return type;

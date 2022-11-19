@@ -18,28 +18,28 @@
 
 using MightyStruct.Basic;
 using MightyStruct.Runtime;
-
 using System.Collections;
 using System.Collections.Generic;
 using System.Dynamic;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace MightyStruct.Arrays
 {
     public class ArrayStruct : DynamicObject, IStruct, IEnumerable<IStruct>
     {
-        private Context Context { get; }
+        public Context Context { get; }
 
-        private IType BaseType { get; }
+        private IPotential<IType> BaseType { get; }
         private IPotential<bool> LoopCondition { get; }
 
         private List<IStruct> Items { get; }
 
         public int size => Items.Count;
 
-        public ArrayStruct(Context context, IType baseType, IPotential<bool> loopCondition)
+        public ArrayStruct(Context context, IPotential<IType> baseType, IPotential<bool> loopCondition)
         {
-            Context = new Context(context);
+            Context = new Context(context, true);
 
             BaseType = baseType;
             LoopCondition = loopCondition;
@@ -49,28 +49,38 @@ namespace MightyStruct.Arrays
 
         public async Task ParseAsync()
         {
+            Items.Clear();
+            Context.Stream.Seek(0, SeekOrigin.Begin);
+            (Context.Stream as SubStream).Unlock();
+
             int index = 0;
 
             var context = new Context(Context);
-            context.Variables = new LoopVariables(Context.Self, 0, null);
+            context.Variables = new LoopVariables(context.Self, 0, null);
             do
             {
-                IStruct @struct = await BaseType.Resolve(context);
+                IType evaluatedType = await BaseType.Resolve(context);
+                IStruct @struct = await evaluatedType.Resolve(context);
                 if (@struct != null)
                     await @struct.ParseAsync();
                 Items.Add(@struct);
 
-                var vars = new LoopVariables(Context.Self, ++index, @struct);
+                var vars = new LoopVariables(context.Self, ++index, @struct);
                 context.Variables = vars;
 
             } while (!(await LoopCondition.Resolve(context)));
+
+            (Context.Stream as SubStream)?.Lock();
         }
 
         public async Task UpdateAsync()
         {
             foreach (var item in Items)
             {
-                await item.UpdateAsync();
+                if (item != null)
+                {
+                    await item.UpdateAsync();
+                }
             }
         }
 
@@ -78,18 +88,8 @@ namespace MightyStruct.Arrays
         {
             int idx = (int)indexes[0];
             var item = Items[idx];
-            if (item is IPrimitiveStruct)
-            {
-                result = (item as IPrimitiveStruct).Value;
-            }
-            else if (item is VoidStruct)
-            {
-                result = (item as VoidStruct).Stream;
-            }
-            else
-            {
-                result = item;
-            }
+            result = item;
+
             return true;
         }
 

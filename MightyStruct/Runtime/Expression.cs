@@ -25,19 +25,21 @@ namespace MightyStruct.Runtime
 {
     public class Expression<T> : IPotential<T>
     {
-        public Script<T> Script { get; }
+        public string Expr { get; }
+        public ScriptRunner<T> ScriptRunner { get; }
 
         public Expression(string expr)
         {
+            Expr = expr;
             var options = ScriptOptions.Default
                 .WithReferences("Microsoft.CSharp");
-            Script = CSharpScript.Create<T>(expr, options, typeof(Variables));
+            ScriptRunner = CSharpScript.Create<T>(Expr, options, typeof(Variables)).CreateDelegate();
         }
 
         public async Task<T> Resolve(Context context)
         {
-            var result = await Script.RunAsync(context.Variables);
-            return result.ReturnValue;
+            var result = await ScriptRunner.Invoke(context.Variables);
+            return result;
         }
     }
 }
